@@ -21,6 +21,7 @@ sudo docker run -it --rm --name "style" 3803fd9102ae python main.py
 
 - [x] implement vggnet
 - [x] import vgg weight from vgg model
+- [ ] cache vgg checkpoint. (at docker image)
 - [ ] logger
 - [ ] implement Gram Matrix 
 - [ ] implement Style Loss
