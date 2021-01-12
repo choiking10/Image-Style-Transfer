@@ -40,5 +40,18 @@ class VGG(nn.Module):
         layer.append(("p", self.pooling(kernel_size=2, stride=2)))
         return nn.Sequential(OrderedDict(layer))
 
+    def load_vgg_weight(self):
+        import torchvision.models as models
+        vgg = models.vgg19(pretrained=True)
+        state_dict = []
+        for (p_name, p_param), (v_name, v_param) in zip(self.named_parameters(), vgg.named_parameters()):
+            state_dict.append((p_name, v_param))
+        self.load_state_dict(OrderedDict(state_dict))
 
-print(VGG("avg"))
+
+def main():
+    vgg = VGG("avg")
+    vgg.load_vgg_weight()
+
+
+main()
