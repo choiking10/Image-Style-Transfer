@@ -4,8 +4,9 @@ MAINTAINER choiking10@gmail.com
 
 RUN apt-get -y update
 RUN apt-get -y upgrade
-RUN apt install -y python-pip python-dev build-essential vim
+RUN apt install -y python-pip python-dev build-essential vim wget
 
+RUN wget https://download.pytorch.org/models/vgg19-dcbb9e9d.pth -P /root/.cache/torch/hub/checkpoints/
 # COPY requirements.txt /tmp/
 # RUN pip install -r /tmp/requirements.txt
 
