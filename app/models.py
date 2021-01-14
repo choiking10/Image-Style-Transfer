@@ -1,3 +1,4 @@
+import torch
 from torch import nn
 from collections import OrderedDict
 
@@ -13,18 +14,18 @@ class VGG(nn.Module):
         else:
             assert True, "pooling layer must be selected in ['max', 'avg']"
 
-        self.conv1 = self.create_layer([3, 64, 64])
-        self.conv2 = self.create_layer([64, 128, 128])
-        self.conv3 = self.create_layer([128, 256, 256, 256, 256])
-        self.conv4 = self.create_layer([256, 512, 512, 512, 512])
-        self.conv5 = self.create_layer([512, 512, 512, 512, 512])
+        self.conv0 = self.create_layer([3, 64, 64])
+        self.conv1 = self.create_layer([64, 128, 128])
+        self.conv2 = self.create_layer([128, 256, 256, 256, 256])
+        self.conv3 = self.create_layer([256, 512, 512, 512, 512])
+        self.conv4 = self.create_layer([512, 512, 512, 512, 512])
 
     def forward(self, x):
+        x = self.conv0(x)
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x)
         x = self.conv4(x)
-        x = self.conv5(x)
 
         return x
 
