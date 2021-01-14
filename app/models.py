@@ -50,6 +50,34 @@ class VGG(nn.Module):
         self.load_state_dict(OrderedDict(state_dict))
 
 
+class GramMatrix(nn.Module):
+     def forward(self, x):
+         b, c, h, w = x.shape
+         F = x.view(-1, c, b * w)
+         G = torch.bmm(F, F.transpose(1, 2)) / (h * w)
+         return G
+
+
+class ContentLoss(nn.Module):
+    def __init__(self, target_feature):
+        super(ContentLoss, self).__init__()
+        b, c, h, w = target_feature.shape
+        self.target_F = target_feature.view(-1, c, b * w)
+
+    def forward(self, input_feature):
+        return nn.MSELoss()(input_feature, self.target_F)
+
+
+class StyleLoss(nn.Module):
+    def __init__(self, target_feature):
+        super(StyleLoss, self).__init__()
+        self.to_gram = GramMatrix()
+        self.target_G = self.to_gram(target_feature)
+
+    def forward(self, input_feature):
+        return nn.MSELoss()(self.to_gram(input_feature), self.target_G)
+
+
 def main():
     vgg = VGG("avg")
     vgg.load_vgg_weight()
