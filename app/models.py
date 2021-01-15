@@ -78,9 +78,35 @@ class StyleLoss(nn.Module):
         return nn.MSELoss()(self.to_gram(input_feature), self.target_G)
 
 
+class HookFunc:
+    def __init__(self, name):
+        self.feature = None
+        self.name = name
+
+    def __call__(self, module, inp, out):
+        self.feature = out.clone().detach()
+
+    @property
+    def data(self):
+        return self.feature
+
+
+class FeatureExtractor:
+    def __init__(self, model, feature_names):
+        self.data = {}
+        named_modules = dict(model.named_modules())
+        for name in feature_names:
+            self.data[name] = HookFunc(name)
+            named_modules[name].register_forward_hook(self.data[name])
+
+
 def main():
     vgg = VGG("avg")
     vgg.load_vgg_weight()
+    style_features = FeatureExtractor(vgg, [f"conv{i}.r0" for i in range(5)])
+    content_features = FeatureExtractor(vgg, [f"conv3.r1"])
+
+
 
 
 main()
