@@ -1,6 +1,11 @@
 import torch
 from torch import nn
 from collections import OrderedDict
+from PIL import Image
+from torch.autograd import Variable
+
+import torchvision
+from torchvision import transforms
 
 
 class VGG(nn.Module):
@@ -106,7 +111,35 @@ def main():
     style_features = FeatureExtractor(vgg, [f"conv{i}.r0" for i in range(5)])
     content_features = FeatureExtractor(vgg, [f"conv3.r1"])
 
+    vgg.modules()
 
+    img_size = 512
+    prep = transforms.Compose([transforms.Scale(img_size),
+                               transforms.ToTensor(),
+                               transforms.Lambda(lambda x: x[torch.LongTensor([2, 1, 0])]),
+                               transforms.Normalize(mean=[0.40760392, 0.45795686, 0.48501961], #subtract imagenet mean
+                                                    std=[1, 1, 1]),
+                               transforms.Lambda(lambda x: x.mul_(255))
+                               ])
+    style_image_path = "images/vangogh_starry_night.jpg"
+    content_image_path = "images/Tuebingen_Neckarfront.jpg"
+
+    style_img = prep(Image.open(style_image_path))
+    content_img = prep(Image.open(content_image_path))
+
+    if torch.cuda.is_available():
+        style_img_torch = Variable(style_img.unsqueeze(0).cuda())
+        content_img_torch = Variable(content_img.unsqueeze(0).cuda())
+    else:
+        style_img_torch = Variable(style_img.unsqueeze(0))
+        content_img_torch = Variable(content_img.unsqueeze(0))
+
+    opt_img = Variable(content_img_torch.data.clone(), requires_grad=True)
+
+    style_vgg = vgg(style_img_torch)
+    content_vgg = vgg(content_img_torch)
+    opt_vgg = vgg(opt_img)
+    print(vgg)
 
 
 main()
