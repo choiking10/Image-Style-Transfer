@@ -6,6 +6,7 @@ from torch.autograd import Variable
 
 import torchvision
 from torchvision import transforms
+from torch import optim
 
 
 class VGG(nn.Module):
@@ -24,15 +25,26 @@ class VGG(nn.Module):
         self.conv2 = self.create_layer([128, 256, 256, 256, 256])
         self.conv3 = self.create_layer([256, 512, 512, 512, 512])
         self.conv4 = self.create_layer([512, 512, 512, 512, 512])
+        self.feature_extractor = {}
+        self.feature = []
 
-    def forward(self, x):
-        x = self.conv0(x)
-        x = self.conv1(x)
-        x = self.conv2(x)
-        x = self.conv3(x)
-        x = self.conv4(x)
+    def forward(self, x, layers: list):
+        #extractor = FeatureExtractor(self, layers)
+        #
+        # x = self.conv0(x)
+        # x = self.conv1(x)
+        # x = self.conv2(x)
+        # x = self.conv3(x)
+        # x = self.conv4(x)
 
-        return x
+        # extractor.clear_hook()
+        ret = [None for i in range(len(layers))]
+
+        for name, module in filter(lambda n:  "." in n[0], self.named_modules()):
+            x = module(x)
+            if name in layers:
+                ret[layers.index(name)] = x
+        return list(ret)
 
     def create_layer(self, param):
         layer = []
@@ -56,31 +68,40 @@ class VGG(nn.Module):
 
 
 class GramMatrix(nn.Module):
-     def forward(self, x):
-         b, c, h, w = x.shape
-         F = x.view(-1, c, b * w)
-         G = torch.bmm(F, F.transpose(1, 2)) / (h * w)
-         return G
+    def forward(self, x):
+        b, c, h, w = x.shape
+        F = x.view(-1, c, b * w)
+        G = torch.bmm(F, F.transpose(1, 2)) / (h * w)
+        return G
 
 
 class ContentLoss(nn.Module):
     def __init__(self, target_feature):
         super(ContentLoss, self).__init__()
-        b, c, h, w = target_feature.shape
-        self.target_F = target_feature.view(-1, c, b * w)
+        self.target_F = target_feature
 
     def forward(self, input_feature):
-        return nn.MSELoss()(input_feature, self.target_F)
+        loss = 0
+        for target, inp in zip(self.target_F, input_feature):
+            loss += nn.MSELoss()(target, inp)
+        return loss
 
 
 class StyleLoss(nn.Module):
-    def __init__(self, target_feature):
+    def __init__(self, target_feature, weights=None):
         super(StyleLoss, self).__init__()
-        self.to_gram = GramMatrix()
-        self.target_G = self.to_gram(target_feature)
+        self.gram_mat = GramMatrix()
+        self.weights = []
+        self.target_G = [self.gram_mat(f) for f in target_feature]
 
     def forward(self, input_feature):
-        return nn.MSELoss()(self.to_gram(input_feature), self.target_G)
+        input_G = [self.gram_mat(f) for f in input_feature]
+
+        loss = 0
+        for target, inp in zip(self.target_G, input_G):
+            c, h, w = target.shape
+            loss += nn.MSELoss()(target, inp) / (h * w)
+        return loss
 
 
 class HookFunc:
@@ -89,7 +110,7 @@ class HookFunc:
         self.name = name
 
     def __call__(self, module, inp, out):
-        self.feature = out.clone().detach()
+        self.feature = out
 
     @property
     def data(self):
@@ -98,20 +119,25 @@ class HookFunc:
 
 class FeatureExtractor:
     def __init__(self, model, feature_names):
-        self.data = {}
+        self._data = {}
+        self._hook = {}
         named_modules = dict(model.named_modules())
         for name in feature_names:
-            self.data[name] = HookFunc(name)
-            named_modules[name].register_forward_hook(self.data[name])
+            self._data[name] = HookFunc(name)
+            self._hook[name] = named_modules[name].register_forward_hook(self._data[name])
+
+    def clear_hook(self):
+        for name, hook in self._hook.items():
+            hook.remove()
+
+    @property
+    def data(self):
+        return [hook_func.feature for name, hook_func in self._data.items()]
 
 
 def main():
     vgg = VGG("avg")
     vgg.load_vgg_weight()
-    style_features = FeatureExtractor(vgg, [f"conv{i}.r0" for i in range(5)])
-    content_features = FeatureExtractor(vgg, [f"conv3.r1"])
-
-    vgg.modules()
 
     img_size = 512
     prep = transforms.Compose([transforms.Scale(img_size),
@@ -121,6 +147,20 @@ def main():
                                                     std=[1, 1, 1]),
                                transforms.Lambda(lambda x: x.mul_(255))
                                ])
+    postpa = transforms.Compose([transforms.Lambda(lambda x: x.mul_(1. / 255)),
+                                 transforms.Normalize(mean=[-0.40760392, -0.45795686, -0.48501961],  # add imagenet mean
+                                                      std=[1, 1, 1]),
+                                 transforms.Lambda(lambda x: x[torch.LongTensor([2, 1, 0])]),  # turn to RGB
+                                 ])
+    postpb = transforms.Compose([transforms.ToPILImage()])
+
+    def postp(tensor):  # to clip results in the range [0,1]
+        t = postpa(tensor)
+        t[t > 1] = 1
+        t[t < 0] = 0
+        img = postpb(t)
+        return img
+
     style_image_path = "images/vangogh_starry_night.jpg"
     content_image_path = "images/Tuebingen_Neckarfront.jpg"
 
@@ -130,16 +170,46 @@ def main():
     if torch.cuda.is_available():
         style_img_torch = Variable(style_img.unsqueeze(0).cuda())
         content_img_torch = Variable(content_img.unsqueeze(0).cuda())
+        opt_img = Variable(content_img_torch.data.clone(), requires_grad=True).cuda()
+        vgg.cuda()
     else:
         style_img_torch = Variable(style_img.unsqueeze(0))
         content_img_torch = Variable(content_img.unsqueeze(0))
+        opt_img = Variable(content_img_torch.data.clone(), requires_grad=True)
 
-    opt_img = Variable(content_img_torch.data.clone(), requires_grad=True)
+    optimizer = optim.Adam([opt_img], lr=0.1)
 
-    style_vgg = vgg(style_img_torch)
-    content_vgg = vgg(content_img_torch)
-    opt_vgg = vgg(opt_img)
-    print(vgg)
+    max_iter = 500
+    show_iter = 50
+    style_alpha = 1e6
+    content_beta = 1e0
+    style_layer = [f"conv{i}.r0" for i in range(5)]
+    content_layer = [f"conv3.r1"]
 
+    style_F = vgg(style_img_torch, style_layer)
+    content_F = vgg(content_img_torch, content_layer)
+
+    style_F = [f.detach() for f in style_F]
+    content_F = [f.detach() for f in content_F]
+
+    style_loss_fn = StyleLoss(style_F)
+    content_loss_fn = ContentLoss(content_F)
+
+    for it in range(1, max_iter+1):
+        #def closure():
+        optimizer.zero_grad()
+        features = vgg(opt_img, style_layer + content_layer)
+        style_feature, content_feature = features[:len(style_layer)], features[len(style_layer):]
+        out_style_loss = style_loss_fn(style_feature)
+        out_content_loss = content_loss_fn(content_feature)
+        loss = style_alpha * out_style_loss + content_beta * out_content_loss
+        loss.backward()
+        print(f'Iteration: {it}, loss: {loss.item()}')
+        if it % show_iter == 0:
+            print(f'Iteration: {it}, loss: {loss.item()}')
+        #    return loss
+        optimizer.step()
+
+    print("end")
 
 main()
