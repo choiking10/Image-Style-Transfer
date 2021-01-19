@@ -145,12 +145,12 @@ def main():
                                transforms.Lambda(lambda x: x[torch.LongTensor([2, 1, 0])]),
                                transforms.Normalize(mean=[0.40760392, 0.45795686, 0.48501961], #subtract imagenet mean
                                                     std=[1, 1, 1]),
-                               transforms.Lambda(lambda x: x.mul_(255))
+                               transforms.Lambda(lambda x: x.mul(255))
                                ])
-    postpa = transforms.Compose([transforms.Lambda(lambda x: x.mul_(1. / 255)),
+    postpa = transforms.Compose([transforms.Lambda(lambda x: x.mul(1. / 255)),
                                  transforms.Normalize(mean=[-0.40760392, -0.45795686, -0.48501961],  # add imagenet mean
                                                       std=[1, 1, 1]),
-                                 transforms.Lambda(lambda x: x[torch.LongTensor([2, 1, 0])]),  # turn to RGB
+#                                 transforms.Lambda(lambda x: x[torch.LongTensor([2, 1, 0])]),  # turn to RGB
                                  ])
     postpb = transforms.Compose([transforms.ToPILImage()])
 
@@ -158,8 +158,8 @@ def main():
         t = postpa(tensor)
         t[t > 1] = 1
         t[t < 0] = 0
-        img = postpb(t)
-        return img
+        #img = postpb(t)
+        return t
 
     style_image_path = "images/vangogh_starry_night.jpg"
     content_image_path = "images/Tuebingen_Neckarfront.jpg"
@@ -177,12 +177,14 @@ def main():
         content_img_torch = Variable(content_img.unsqueeze(0))
         opt_img = Variable(content_img_torch.data.clone(), requires_grad=True)
 
-    optimizer = optim.Adam([opt_img], lr=0.1)
+
+
+    optimizer = optim.Adam([opt_img], lr=10)
 
     max_iter = 500
     show_iter = 50
-    style_alpha = 1e6
-    content_beta = 1e0
+    style_alpha = 1e3
+    content_beta = 1/1e2
     style_layer = [f"conv{i}.r0" for i in range(5)]
     content_layer = [f"conv3.r1"]
 
@@ -202,9 +204,9 @@ def main():
         style_feature, content_feature = features[:len(style_layer)], features[len(style_layer):]
         out_style_loss = style_loss_fn(style_feature)
         out_content_loss = content_loss_fn(content_feature)
+        out_content_loss = 0
         loss = style_alpha * out_style_loss + content_beta * out_content_loss
         loss.backward()
-        print(f'Iteration: {it}, loss: {loss.item()}')
         if it % show_iter == 0:
             print(f'Iteration: {it}, loss: {loss.item()}')
         #    return loss
