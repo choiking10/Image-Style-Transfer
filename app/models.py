@@ -100,7 +100,7 @@ class StyleLoss(nn.Module):
         loss = 0
         for target, inp in zip(self.target_G, input_G):
             c, h, w = target.shape
-            loss += nn.MSELoss()(target, inp) / (h * w)
+            loss += nn.MSELoss()(target, inp)
         return loss
 
 
@@ -181,12 +181,12 @@ def main():
 
     optimizer = optim.Adam([opt_img], lr=10)
 
-    max_iter = 500
-    show_iter = 50
+    max_iter = 1000
+    show_iter = 100
     style_alpha = 1e3
-    content_beta = 1/1e2
+    content_beta = 1e0
     style_layer = [f"conv{i}.r0" for i in range(5)]
-    content_layer = [f"conv3.r1"]
+    content_layer = [f"conv3.r2"]
 
     style_F = vgg(style_img_torch, style_layer)
     content_F = vgg(content_img_torch, content_layer)
@@ -204,7 +204,7 @@ def main():
         style_feature, content_feature = features[:len(style_layer)], features[len(style_layer):]
         out_style_loss = style_loss_fn(style_feature)
         out_content_loss = content_loss_fn(content_feature)
-        out_content_loss = 0
+        # out_content_loss = 0
         loss = style_alpha * out_style_loss + content_beta * out_content_loss
         loss.backward()
         if it % show_iter == 0:
